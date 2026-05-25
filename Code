@@ -1,0 +1,126 @@
+# ================================================
+# СТРЕСС-ТЕСТ FFPR
+# ================================================
+
+import torch
+import torch.nn as nn
+import torch.optim as optim
+import math
+
+print("PyTorch версия:", torch.__version__)
+print("GPU доступен:", torch.cuda.is_available())
+
+# ====================== FractalTensor (максимально стабильный) ======================
+class FractalTensor:
+    def __init__(self, data: torch.Tensor, fractal_index: torch.Tensor = None):
+        self.data = data.float().clone().detach().requires_grad_(True)
+        if fractal_index is None:
+            self.fractal_index = torch.zeros_like(self.data, dtype=torch.float32)
+        else:
+            self.fractal_index = fractal_index.clone().to(self.data.device)
+
+    def threshold_promotion(self, eps_min=1e-20):
+        small_mask = (torch.abs(self.data) < eps_min) & (self.fractal_index == 0)
+        if small_mask.any():
+            self.data = self.data.clone()
+            self.fractal_index = self.fractal_index.clone()
+            self.data[small_mask] /= eps_min
+            self.fractal_index[small_mask] = 1.0
+        return self
+
+    def to_real(self):
+        safe_index = torch.clamp(self.fractal_index, -5, 5)
+        return (self.data * (10.0 ** (-38.0 * safe_index))).requires_grad_(True)
+
+
+class FractalLinear(nn.Module):
+    def __init__(self, in_features, out_features):
+        super().__init__()
+        self.weight = nn.Parameter(torch.empty(out_features, in_features))
+        self.bias = nn.Parameter(torch.zeros(out_features))
+        self.reset_parameters()
+
+    def reset_parameters(self):
+        self.weight.data.normal_(0, 3.0)   # Очень сильная дестабилизация
+
+    def forward(self, x: FractalTensor):
+        # Простое матричное умножение
+        out_data = torch.matmul(x.data, self.weight.t()) + self.bias
+        ft = FractalTensor(out_data)
+        ft.threshold_promotion()
+        return ft
+
+
+# ====================== DeepMLP ======================
+class DeepMLP(nn.Module):
+    def __init__(self, input_dim=784, hidden_dim=256, num_layers=80, use_fractal=False):
+        super().__init__()
+        self.use_fractal = use_fractal
+        self.layers = nn.ModuleList()
+        prev_dim = input_dim
+        for _ in range(num_layers):
+            if use_fractal:
+                self.layers.append(FractalLinear(prev_dim, hidden_dim))
+            else:
+                self.layers.append(nn.Linear(prev_dim, hidden_dim))
+            self.layers.append(nn.ReLU())
+            prev_dim = hidden_dim
+        self.head = nn.Linear(hidden_dim, 10)
+
+    def forward(self, x):
+        if self.use_fractal:
+            x = FractalTensor(x)
+            for i, layer in enumerate(self.layers):
+                if isinstance(layer, FractalLinear):
+                    x = layer(x)
+                else:
+                    x = FractalTensor(layer(x.data))
+            return self.head(x.to_real())
+        else:
+            for layer in self.layers:
+                x = layer(x)
+            return self.head(x)
+
+
+# ====================== Тест ======================
+def run_stress_test(num_layers=80, use_fractal=False, batch_size=32, epochs=6):
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f"\n{'='*80}")
+    print(f"СТРЕСС-ТЕСТ: {num_layers} слоёв | Fractal = {use_fractal} | {device}")
+    print(f"{'='*80}")
+    
+    model = DeepMLP(num_layers=num_layers, hidden_dim=256, use_fractal=use_fractal).to(device)
+    
+    x = torch.randn(batch_size, 784, device=device) * 10.0   # Очень большой масштаб
+    y = torch.randint(0, 10, (batch_size,), device=device)
+
+    optimizer = optim.Adam(model.parameters(), lr=5e-4)
+    criterion = nn.CrossEntropyLoss()
+
+    for epoch in range(epochs):
+        optimizer.zero_grad()
+        output = model(x)
+        loss = criterion(output, y)
+        loss.backward()
+        
+        nan_grads = sum(torch.isnan(p.grad).sum().item() for p in model.parameters() 
+                       if p.grad is not None)
+        
+        print(f"Эпоха {epoch+1}/{epochs} | Loss: {loss.item():.4f} | NaN: {nan_grads}")
+        
+        if nan_grads > 0:
+            print("❌ NaN появился!")
+            break
+        optimizer.step()
+    else:
+        print("✅ Завершено без NaN")
+
+
+# ====================== ЗАПУСК ======================
+print("=== ФИНАЛЬНЫЙ СТРЕСС-ТЕСТ ===\n")
+
+print("1. Обычная сеть (должна начать ломаться)")
+run_stress_test(num_layers=100, use_fractal=False)
+
+print("\n2. FFPR версия")
+run_stress_test(num_layers=100, use_fractal=True)
