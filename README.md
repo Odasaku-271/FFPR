@@ -16,7 +16,7 @@ Fractal Floating-Point Representation for stable deep learning
 ## Содержимое репозитория
 
 - `Fractal_numbers` — три файла с работой 
-- `code/` — мои жалкие попытки проверить работу системы
+- `stress_test.py` — мои жалкие попытки проверить работу системы
 
 ## Текущий статус
 
