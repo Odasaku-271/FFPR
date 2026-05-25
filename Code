@@ -13,7 +13,7 @@ print("GPU доступен:", torch.cuda.is_available())
 # ====================== FractalTensor (максимально стабильный) ======================
 class FractalTensor:
     def __init__(self, data: torch.Tensor, fractal_index: torch.Tensor = None):
-        self.data = data.float().clone().detach().requires_grad_(True)
+        self.data = data.float()
         if fractal_index is None:
             self.fractal_index = torch.zeros_like(self.data, dtype=torch.float32)
         else:
@@ -30,7 +30,7 @@ class FractalTensor:
 
     def to_real(self):
         safe_index = torch.clamp(self.fractal_index, -5, 5)
-        return (self.data * (10.0 ** (-38.0 * safe_index))).requires_grad_(True)
+        return (self.data * (10.0 ** (-38.0 * safe_index)))
 
 
 class FractalLinear(nn.Module):
