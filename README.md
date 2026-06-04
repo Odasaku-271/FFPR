@@ -15,7 +15,8 @@ Fractal Floating-Point Representation for stable deep learning
 
 ## Содержимое репозитория
 
-- `Fractal_numbers` — вся теория оформленная в LaTeX
+- `FFPR_Preprint` — вся теория оформленная в LaTeX
+- `Google_disk` — исходный код и результаты из Google Colab 
 
 ## Текущий статус
 
