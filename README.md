@@ -16,7 +16,7 @@ Fractal Floating-Point Representation for stable deep learning
 ## Содержимое репозитория
 
 - `FFPR_Preprint` — вся теория оформленная в LaTeX
-- `Google_disk` — исходный код и результаты из Google Colab 
+- `stress_test.py` — исходный код и результаты из Google Colab 
 
 ## Текущий статус
 
